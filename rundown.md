@@ -1,10 +1,6 @@
-Recommended stack for Modoroco
-
-Build Modoroco in Python as a modular monorepo containing a reusable core package and one deployable microservice.
+Modoroco in Python as a modular monorepo containing a reusable core package and one deployable microservice.
 
 Core stack
-
-Area	Choice
 
 Language	Python 3.13
 Dependency management	uv with pyproject.toml and committed uv.lock
@@ -442,10 +438,7 @@ OpenTelemetry supports Python traces, metrics, logs, and FastAPI instrumentation
 
 Final stack decision
 
-Use:
 
 Python 3.13 + FastAPI + Pydantic v2 + SQLAlchemy 2.0 async + asyncpg + Alembic + PostgreSQL + Docker + Docker Compose + pytest + Hypothesis + Ruff + Pyright + OpenTelemetry.
 
-Add Redis only when Modoroco reaches distributed deployment or requires cross-instance realtime fanout.
-
-Do not start with Kubernetes, Kafka, Celery, GraphQL, multiple databases, or several separately deployed microservices. Modoroco’s difficult problem is timer correctness and state synchronization, not raw computation.
+will Add Redis only when Modoroco reaches distributed deployment or requires cross-instance realtime fanout.
