@@ -1,0 +1,21 @@
+name: Feature request
+description: Propose a product capability.
+title: "feat: "
+labels: ["type:feature"]
+body:
+  - type: textarea
+    id: problem
+    attributes: {label: Problem}
+    validations: {required: true}
+  - type: textarea
+    id: solution
+    attributes: {label: Proposed solution and alternatives}
+    validations: {required: true}
+  - type: textarea
+    id: impacts
+    attributes: {label: API, worker, persistence, compatibility, security, and operational impact}
+  - type: textarea
+    id: acceptance
+    attributes: {label: Acceptance criteria}
+    validations: {required: true}
+

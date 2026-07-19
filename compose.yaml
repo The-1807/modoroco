@@ -1,0 +1,48 @@
+name: modoroco
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: modoroco
+      POSTGRES_USER: modoroco
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U modoroco -d modoroco"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes: ["postgres-data:/var/lib/postgresql/data"]
+    networks: [backend]
+  migrate:
+    build: .
+    command: ["alembic", "upgrade", "head"]
+    env_file: .env
+    depends_on:
+      postgres: {condition: service_healthy}
+    networks: [backend]
+  api:
+    build: .
+    env_file: .env
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    ports: ["8000:8000"]
+    restart: unless-stopped
+    read_only: true
+    tmpfs: ["/tmp"]
+    networks: [backend]
+  worker:
+    build: .
+    command: ["modoroco-worker"]
+    env_file: .env
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    restart: unless-stopped
+    read_only: true
+    tmpfs: ["/tmp"]
+    networks: [backend]
+volumes:
+  postgres-data:
+networks:
+  backend:
+    internal: true
+

@@ -1,0 +1,32 @@
+name: Bug report
+description: Report reproducible incorrect behavior.
+title: "bug: "
+labels: ["type:bug"]
+body:
+  - type: textarea
+    id: description
+    attributes: {label: Description, description: Include expected and actual behavior.}
+    validations: {required: true}
+  - type: textarea
+    id: reproduction
+    attributes: {label: Reproduction steps}
+    validations: {required: true}
+  - type: input
+    id: environment
+    attributes: {label: Environment and Modoroco version}
+    validations: {required: true}
+  - type: dropdown
+    id: component
+    attributes: {label: Component, options: [API, Worker, Database, Desktop, SDK]}
+    validations: {required: true}
+  - type: textarea
+    id: diagnostics
+    attributes: {label: Sanitized logs and correlation ID}
+  - type: dropdown
+    id: severity
+    attributes: {label: Severity, options: [Critical, High, Medium, Low]}
+    validations: {required: true}
+  - type: textarea
+    id: impact
+    attributes: {label: Data-integrity and security impact}
+
