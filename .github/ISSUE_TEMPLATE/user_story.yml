@@ -1,0 +1,35 @@
+name: User story
+description: Describe valuable behavior from a user's perspective.
+title: "story: "
+labels: ["type:user-story"]
+body:
+  - type: input
+    id: persona
+    attributes: {label: Persona}
+    validations: {required: true}
+  - type: textarea
+    id: need
+    attributes: {label: User need, business value, and context}
+    validations: {required: true}
+  - type: textarea
+    id: acceptance
+    attributes: {label: Acceptance criteria and definition of done}
+    validations: {required: true}
+  - type: textarea
+    id: dependencies
+    attributes: {label: Dependencies and technical considerations}
+  - type: textarea
+    id: assurance
+    attributes: {label: Security, observability, and test requirements}
+  - type: dropdown
+    id: priority
+    attributes: {label: Priority, options: [Critical, High, Medium, Low]}
+    validations: {required: true}
+  - type: dropdown
+    id: area
+    attributes: {label: Area, options: [Domain, API, Worker, Database, SDK, Docker, CI, Desktop]}
+    validations: {required: true}
+  - type: input
+    id: milestone
+    attributes: {label: Target milestone}
+

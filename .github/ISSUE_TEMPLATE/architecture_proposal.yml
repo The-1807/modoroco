@@ -1,0 +1,21 @@
+name: Architecture proposal
+description: Propose a contract, storage, concurrency, security, worker, or deployment decision.
+title: "arch: "
+labels: ["type:architecture"]
+body:
+  - type: textarea
+    id: context
+    attributes: {label: Context and constraints}
+    validations: {required: true}
+  - type: textarea
+    id: decision
+    attributes: {label: Proposed decision}
+    validations: {required: true}
+  - type: textarea
+    id: alternatives
+    attributes: {label: Alternatives and consequences}
+    validations: {required: true}
+  - type: textarea
+    id: rollout
+    attributes: {label: Migration, rollback, observability, and security plan}
+

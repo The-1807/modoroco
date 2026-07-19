@@ -1,0 +1,11 @@
+name: Release
+on: {push: {tags: ["v[0-9]+.[0-9]+.[0-9]+"]}}
+permissions: {contents: write}
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: grep -q "${GITHUB_REF_NAME#v}" CHANGELOG.md
+      - env: {GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}"}
+        run: gh release create "$GITHUB_REF_NAME" --generate-notes --verify-tag --notes "Image: ghcr.io/${GITHUB_REPOSITORY}:$GITHUB_REF_NAME. Review migration and compatibility notes in the changelog."
