@@ -1,13 +1,13 @@
 # syntax=docker/dockerfile:1.7
 FROM ghcr.io/astral-sh/uv:0.8.4 AS uv
-FROM python:3.13.5-slim AS builder
+FROM python:3.14.6-slim AS builder
 COPY --from=uv /uv /usr/local/bin/uv
 WORKDIR /build
 COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
 RUN uv sync --frozen --no-dev --no-editable
 
-FROM python:3.13.5-slim AS runtime
+FROM python:3.14.6-slim AS runtime
 LABEL org.opencontainers.image.title="Modoroco" org.opencontainers.image.licenses="Apache-2.0"
 RUN useradd --create-home --uid 1807 modoroco
 WORKDIR /app
