@@ -1,0 +1,259 @@
+name: PostgreSQL and Container Verification
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [ci/hosted-container-verification]
+
+concurrency:
+  group: postgresql-container-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  PYTHON_VERSION: "3.13"
+  UV_VERSION: "0.11.29"
+
+jobs:
+  quality-python-313:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Locked environment
+        run: uv sync --python 3.13 --locked --all-extras --dev
+      - name: Quality gate
+        run: |
+          mkdir -p artifacts/quality
+          set -o pipefail
+          python --version | tee artifacts/quality/python.txt
+          uv run ruff format --check . 2>&1 | tee artifacts/quality/ruff-format.txt
+          uv run ruff check . 2>&1 | tee artifacts/quality/ruff-lint.txt
+          uv run pyright 2>&1 | tee artifacts/quality/pyright.txt
+          uv run pytest --junitxml=artifacts/quality/pytest.xml \
+            --cov-report=xml:artifacts/quality/coverage.xml \
+            2>&1 | tee artifacts/quality/pytest.txt
+          uv run python scripts/generate_openapi.py --check
+          git diff --exit-code -- uv.lock openapi/openapi.json
+      - name: Import and secret checks
+        run: |
+          uv run python - <<'PY'
+          import modoroco.domain
+          import modoroco.infrastructure.database
+          import modoroco.runtime.api
+          import modoroco.runtime.worker
+          import modoroco_ui
+          import scripts.generate_openapi
+          print("all import boundaries passed")
+          PY
+          ! git grep -En 'gho_[A-Za-z0-9_]+|BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|MODOROCO_BOOTSTRAP_API_KEY=[^[:space:]]+|POSTGRES_PASSWORD=[^[:space:]]+'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: quality-python-313
+          path: artifacts/quality
+          retention-days: 14
+
+  postgresql-integration:
+    needs: quality-python-313
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: modoroco_test
+          POSTGRES_USER: modoroco_test
+          POSTGRES_PASSWORD: workflow-only-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U modoroco_test -d modoroco_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      MODOROCO_ENVIRONMENT: test
+      MODOROCO_DATABASE_URL: postgresql+asyncpg://modoroco_test:workflow-only-password@localhost:5432/modoroco_test
+      MODOROCO_TEST_DATABASE_URL: postgresql+asyncpg://modoroco_test:workflow-only-password@localhost:5432/modoroco_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: uv sync --python 3.13 --locked --all-extras --dev
+      - name: PostgreSQL migration and schema
+        run: |
+          mkdir -p artifacts/postgresql
+          set -o pipefail
+          uv run alembic upgrade head 2>&1 | tee artifacts/postgresql/migration.txt
+          uv run alembic upgrade head 2>&1 | tee -a artifacts/postgresql/migration.txt
+          uv run alembic current | tee artifacts/postgresql/current.txt
+          PGPASSWORD=workflow-only-password psql -h localhost -U modoroco_test -d modoroco_test \
+            -c '\dt+' -c '\di+' -c '\d+ idempotency_records' -c '\d+ session_phase_history' \
+            > artifacts/postgresql/schema.txt
+      - name: Real PostgreSQL integration suite
+        run: |
+          set -o pipefail
+          uv run pytest tests/postgresql -vv \
+            --junitxml=artifacts/postgresql/pytest.xml \
+            2>&1 | tee artifacts/postgresql/pytest.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: postgresql-integration
+          path: artifacts/postgresql
+          retention-days: 14
+
+  docker-image:
+    needs: postgresql-integration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build production image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: modoroco:gha-verification-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Inspect image
+        run: |
+          mkdir -p artifacts/image
+          image="modoroco:gha-verification-${GITHUB_SHA}"
+          docker image inspect "$image" > artifacts/image/inspect.json
+          docker history --no-trunc "$image" > artifacts/image/history.txt
+          docker image ls "$image" --format '{{.ID}} {{.Size}}' | tee artifacts/image/size.txt
+          test "$(docker run --rm "$image" id -u)" != "0"
+          docker run --rm "$image" python --version | tee artifacts/image/python.txt
+          docker run --rm "$image" python -c \
+            'import modoroco.domain, modoroco.runtime.api, modoroco.runtime.worker'
+          ! grep -E 'MODOROCO_BOOTSTRAP_API_KEY=|POSTGRES_PASSWORD=' \
+            artifacts/image/inspect.json artifacts/image/history.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: docker-image
+          path: artifacts/image
+          retention-days: 14
+
+  compose-system:
+    needs: docker-image
+    runs-on: ubuntu-latest
+    env:
+      COMPOSE_PROJECT_NAME: modoroco-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: uv sync --python 3.13 --locked --all-extras --dev
+      - name: Runtime-only configuration
+        run: |
+          password="$(openssl rand -hex 24)"
+          api_key="$(openssl rand -hex 32)"
+          echo "::add-mask::$password"
+          echo "::add-mask::$api_key"
+          {
+            echo "POSTGRES_PASSWORD=$password"
+            echo "MODOROCO_ENVIRONMENT=production"
+            echo "MODOROCO_DATABASE_URL=postgresql+asyncpg://modoroco:$password@postgres:5432/modoroco"
+            echo "MODOROCO_BOOTSTRAP_API_KEY=$api_key"
+            echo "MODOROCO_WORKER_POLL_SECONDS=0.25"
+            echo "MODOROCO_WORKER_BATCH_SIZE=50"
+          } > .env
+          echo "MODOROCO_VERIFY_API_KEY=$api_key" >> "$GITHUB_ENV"
+      - name: Validate and start Compose
+        run: |
+          mkdir -p artifacts/compose
+          docker compose config --quiet
+          docker compose config > artifacts/compose/config.txt
+          docker compose up -d --build --scale worker=2
+          docker compose ps --all | tee artifacts/compose/ps-start.txt
+      - name: System verification
+        run: uv run python scripts/verify_compose_system.py
+      - name: Capture diagnostics
+        if: always()
+        run: |
+          docker compose ps --all > artifacts/compose/ps-final.txt 2>&1 || true
+          docker compose logs --no-color > artifacts/compose/compose.log 2>&1 || true
+          docker network ls > artifacts/compose/networks.txt 2>&1 || true
+          docker volume ls > artifacts/compose/volumes.txt 2>&1 || true
+          docker compose exec -T postgres pg_dump -U modoroco -d modoroco \
+            --schema-only > artifacts/compose/schema.sql 2>&1 || true
+          docker compose down --remove-orphans >> artifacts/compose/cleanup.txt 2>&1 || true
+          docker volume rm "${COMPOSE_PROJECT_NAME}_postgres-data" \
+            >> artifacts/compose/cleanup.txt 2>&1 || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: compose-system
+          path: artifacts/compose
+          retention-days: 14
+
+  verification-summary:
+    if: always()
+    needs:
+      - quality-python-313
+      - postgresql-integration
+      - docker-image
+      - compose-system
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce complete gate
+        env:
+          QUALITY: ${{ needs.quality-python-313.result }}
+          POSTGRESQL: ${{ needs.postgresql-integration.result }}
+          IMAGE: ${{ needs.docker-image.result }}
+          COMPOSE: ${{ needs.compose-system.result }}
+        run: |
+          mkdir -p artifacts/summary
+          jq -n \
+            --arg commit "$GITHUB_SHA" \
+            --arg quality "$QUALITY" \
+            --arg postgresql "$POSTGRESQL" \
+            --arg image "$IMAGE" \
+            --arg compose "$COMPOSE" \
+            '{commit:$commit,quality:$quality,postgresql:$postgresql,image:$image,compose:$compose}' \
+            | tee artifacts/summary/verification.json
+          {
+            echo "# Modoroco hosted verification"
+            echo
+            echo "- Commit: \`$GITHUB_SHA\`"
+            echo "- Python quality: $QUALITY"
+            echo "- PostgreSQL integration: $POSTGRESQL"
+            echo "- Docker image: $IMAGE"
+            echo "- Compose system: $COMPOSE"
+            echo "- Artifacts: quality-python-313, postgresql-integration, docker-image, compose-system"
+          } | tee artifacts/summary/verification.md >> "$GITHUB_STEP_SUMMARY"
+          test "$QUALITY" = success
+          test "$POSTGRESQL" = success
+          test "$IMAGE" = success
+          test "$COMPOSE" = success
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verification-summary
+          path: artifacts/summary
+          retention-days: 14

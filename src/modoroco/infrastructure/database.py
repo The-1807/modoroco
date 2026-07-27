@@ -93,6 +93,29 @@ class EventModel(Base):
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class SessionPhaseModel(Base):
+    __tablename__ = "session_phase_history"
+    __table_args__ = (
+        UniqueConstraint(
+            "session_id",
+            "session_version",
+            name="uq_session_phase_history_version",
+        ),
+    )
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    tenant_id: Mapped[UUID] = mapped_column(ForeignKey("tenants.id"), index=True)
+    session_id: Mapped[UUID] = mapped_column(
+        ForeignKey("timer_sessions.id"),
+        index=True,
+    )
+    phase_key: Mapped[str] = mapped_column(String(60))
+    phase_index: Mapped[int] = mapped_column(Integer)
+    outcome: Mapped[str] = mapped_column(String(24))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ended_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    session_version: Mapped[int] = mapped_column(Integer)
+
+
 class OutboxModel(Base):
     __tablename__ = "outbox"
     id: Mapped[UUID] = mapped_column(primary_key=True)

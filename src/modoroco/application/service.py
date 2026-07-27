@@ -9,7 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from modoroco.domain import Command, Phase, PhaseType, Session
 from modoroco.domain.session import DomainEvent, SessionState
-from modoroco.infrastructure.database import EventModel, OutboxModel, SessionModel
+from modoroco.infrastructure.database import (
+    EventModel,
+    OutboxModel,
+    SessionModel,
+    SessionPhaseModel,
+)
 
 
 def serialize_session(value: Session) -> dict[str, Any]:
@@ -104,7 +109,23 @@ async def execute_command(
     extend_seconds: int | None,
 ) -> Session:
     aggregate = hydrate_session(model.data)
+    completed_phase = aggregate.current_phase
+    completed_phase_index = aggregate.current_phase_index
+    completed_phase_started_at = aggregate.started_at
     changed = aggregate.execute(command, expected_version, now, extend_seconds)
+    if command in {Command.SKIP_PHASE, Command.COMPLETE_PHASE}:
+        db.add(
+            SessionPhaseModel(
+                tenant_id=aggregate.tenant_id,
+                session_id=aggregate.session_id,
+                phase_key=completed_phase.key,
+                phase_index=completed_phase_index,
+                outcome=("skipped" if command is Command.SKIP_PHASE else "completed"),
+                started_at=completed_phase_started_at,
+                ended_at=now,
+                session_version=changed.version,
+            )
+        )
     previous_events = len(aggregate.events)
     model.state = changed.state.value
     model.version = changed.version
