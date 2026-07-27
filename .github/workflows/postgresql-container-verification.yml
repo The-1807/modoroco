@@ -187,10 +187,15 @@ jobs:
       - name: Validate and start Compose
         run: |
           mkdir -p artifacts/compose
+          uname -a | tee artifacts/compose/runner.txt
+          docker version | tee artifacts/compose/docker-version.txt
+          docker compose version | tee artifacts/compose/compose-version.txt
           docker compose config --quiet
           docker compose config > artifacts/compose/config.txt
           docker compose up -d --build --scale worker=2
           docker compose ps --all | tee artifacts/compose/ps-start.txt
+          docker compose exec -T postgres postgres --version \
+            | tee artifacts/compose/postgresql-version.txt
       - name: System verification
         run: uv run python scripts/verify_compose_system.py
       - name: Capture diagnostics
@@ -235,7 +240,38 @@ jobs:
             --arg postgresql "$POSTGRESQL" \
             --arg image "$IMAGE" \
             --arg compose "$COMPOSE" \
-            '{commit:$commit,quality:$quality,postgresql:$postgresql,image:$image,compose:$compose}' \
+            '{
+              commit:$commit,
+              jobs:{
+                quality_python_313:$quality,
+                postgresql_integration:$postgresql,
+                docker_image:$image,
+                compose_system:$compose
+              },
+              checks:{
+                migrations:$postgresql,
+                api_liveness:$compose,
+                api_readiness:$compose,
+                worker_readiness:$compose,
+                metrics:$compose,
+                automatic_transition:$compose,
+                phase_history:$compose,
+                outbox_delivery:$compose,
+                outbox_retry:$compose,
+                idempotent_replay:$compose,
+                idempotency_conflict:$compose,
+                stale_version_rejection:$compose,
+                tenant_isolation:$compose,
+                concurrent_workers:$postgresql,
+                api_restart:$compose,
+                worker_restart:$compose,
+                full_stack_restart:$compose,
+                named_volume_persistence:$compose,
+                container_authentication:$compose,
+                sse:$compose,
+                openapi_drift:$quality
+              }
+            }' \
             | tee artifacts/summary/verification.json
           {
             echo "# Modoroco hosted verification"
@@ -245,6 +281,34 @@ jobs:
             echo "- PostgreSQL integration: $POSTGRESQL"
             echo "- Docker image: $IMAGE"
             echo "- Compose system: $COMPOSE"
+            echo
+            echo "## System capabilities"
+            echo
+            for check in \
+              "Migrations:$POSTGRESQL" \
+              "Concurrent workers:$POSTGRESQL" \
+              "OpenAPI drift:$QUALITY" \
+              "API liveness:$COMPOSE" \
+              "API readiness:$COMPOSE" \
+              "Worker readiness:$COMPOSE" \
+              "Metrics:$COMPOSE" \
+              "Automatic transition:$COMPOSE" \
+              "Phase history:$COMPOSE" \
+              "Outbox delivery:$COMPOSE" \
+              "Outbox retry:$COMPOSE" \
+              "Idempotent replay:$COMPOSE" \
+              "Idempotency conflict:$COMPOSE" \
+              "Stale-version rejection:$COMPOSE" \
+              "Tenant isolation:$COMPOSE" \
+              "API restart:$COMPOSE" \
+              "Worker restart:$COMPOSE" \
+              "Full-stack restart:$COMPOSE" \
+              "Named-volume persistence:$COMPOSE" \
+              "Container authentication:$COMPOSE" \
+              "SSE:$COMPOSE"
+            do
+              echo "- ${check/:/: }"
+            done
             echo "- Artifacts: quality-python-313, postgresql-integration, docker-image, compose-system"
           } | tee artifacts/summary/verification.md >> "$GITHUB_STEP_SUMMARY"
           test "$QUALITY" = success
