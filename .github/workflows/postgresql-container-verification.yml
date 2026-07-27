@@ -5,7 +5,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [ci/hosted-container-verification]
+    branches: [ci/hosted-container-verification, perf/runtime-dependency-separation]
 
 concurrency:
   group: postgresql-container-${{ github.workflow }}-${{ github.ref }}
@@ -32,23 +32,23 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: Locked environment
-        run: uv sync --python 3.13 --locked --all-extras --dev
+        run: uv sync --python 3.13 --locked --all-extras --all-groups
       - name: Quality gate
         run: |
           mkdir -p artifacts/quality
           set -o pipefail
           python --version | tee artifacts/quality/python.txt
-          uv run ruff format --check . 2>&1 | tee artifacts/quality/ruff-format.txt
-          uv run ruff check . 2>&1 | tee artifacts/quality/ruff-lint.txt
-          uv run pyright 2>&1 | tee artifacts/quality/pyright.txt
-          uv run pytest --junitxml=artifacts/quality/pytest.xml \
+          uv run --no-sync ruff format --check . 2>&1 | tee artifacts/quality/ruff-format.txt
+          uv run --no-sync ruff check . 2>&1 | tee artifacts/quality/ruff-lint.txt
+          uv run --no-sync pyright 2>&1 | tee artifacts/quality/pyright.txt
+          uv run --no-sync pytest --junitxml=artifacts/quality/pytest.xml \
             --cov-report=xml:artifacts/quality/coverage.xml \
             2>&1 | tee artifacts/quality/pytest.txt
-          uv run python scripts/generate_openapi.py --check
+          uv run --no-sync python scripts/generate_openapi.py --check
           git diff --exit-code -- uv.lock openapi/openapi.json
       - name: Import and secret checks
         run: |
-          uv run python - <<'PY'
+          uv run --no-sync python - <<'PY'
           import modoroco.domain
           import modoroco.infrastructure.database
           import modoroco.runtime.api
@@ -65,8 +65,43 @@ jobs:
           path: artifacts/quality
           retention-days: 14
 
-  postgresql-integration:
+  server-profile:
     needs: quality-python-313
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: uv sync --python 3.13 --locked --no-dev --extra server
+      - run: uv run --no-sync python scripts/verify_dependency_profile.py server
+      - run: uv run --no-sync python scripts/generate_openapi.py --check
+
+  desktop-profile:
+    needs: quality-python-313
+    runs-on: ubuntu-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends libegl1
+      - run: uv sync --python 3.13 --locked --extra desktop --group dev
+      - run: uv run --no-sync python scripts/verify_dependency_profile.py desktop
+      - run: uv run --no-sync pytest tests/test_timer.py
+
+  postgresql-integration:
+    needs: [server-profile, desktop-profile]
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -95,21 +130,21 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - run: uv sync --python 3.13 --locked --all-extras --dev
+      - run: uv sync --python 3.13 --locked --extra server --group dev
       - name: PostgreSQL migration and schema
         run: |
           mkdir -p artifacts/postgresql
           set -o pipefail
-          uv run alembic upgrade head 2>&1 | tee artifacts/postgresql/migration.txt
-          uv run alembic upgrade head 2>&1 | tee -a artifacts/postgresql/migration.txt
-          uv run alembic current | tee artifacts/postgresql/current.txt
+          uv run --no-sync alembic upgrade head 2>&1 | tee artifacts/postgresql/migration.txt
+          uv run --no-sync alembic upgrade head 2>&1 | tee -a artifacts/postgresql/migration.txt
+          uv run --no-sync alembic current | tee artifacts/postgresql/current.txt
           PGPASSWORD=workflow-only-password psql -h localhost -U modoroco_test -d modoroco_test \
             -c '\dt+' -c '\di+' -c '\d+ idempotency_records' -c '\d+ session_phase_history' \
             > artifacts/postgresql/schema.txt
       - name: Real PostgreSQL integration suite
         run: |
           set -o pipefail
-          uv run pytest tests/postgresql -vv \
+          uv run --no-sync pytest tests/postgresql -vv \
             --junitxml=artifacts/postgresql/pytest.xml \
             2>&1 | tee artifacts/postgresql/pytest.txt
       - uses: actions/upload-artifact@v4
@@ -134,17 +169,31 @@ jobs:
           tags: modoroco:gha-verification-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Scan production image
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
+        with:
+          image: modoroco:gha-verification-${{ github.sha }}
+          fail-build: false
+          severity-cutoff: high
+          output-format: table
       - name: Inspect image
         run: |
           mkdir -p artifacts/image
           image="modoroco:gha-verification-${GITHUB_SHA}"
           docker image inspect "$image" > artifacts/image/inspect.json
+          docker image inspect "$image" --format '{{.Id}} {{.Size}}' > artifacts/image/identity-and-size.txt
           docker history --no-trunc "$image" > artifacts/image/history.txt
           docker image ls "$image" --format '{{.ID}} {{.Size}}' | tee artifacts/image/size.txt
           test "$(docker run --rm "$image" id -u)" != "0"
           docker run --rm "$image" python --version | tee artifacts/image/python.txt
           docker run --rm "$image" python -c \
             'import modoroco.domain, modoroco.runtime.api, modoroco.runtime.worker'
+          docker run --rm "$image" python -c \
+            'import importlib.metadata as m; print("\n".join(sorted(d.metadata["Name"] for d in m.distributions())))' \
+            | tee artifacts/image/packages.txt
+          ! grep -Ei '^(PySide6|PySide6_Addons|PySide6_Essentials|shiboken6|pytest|hypothesis|ruff|pyright|coverage)$' \
+            artifacts/image/packages.txt
+          docker run --rm "$image" test -f /app/migrations/env.py
           ! grep -E 'MODOROCO_BOOTSTRAP_API_KEY=|POSTGRES_PASSWORD=' \
             artifacts/image/inspect.json artifacts/image/history.txt
       - uses: actions/upload-artifact@v4
@@ -168,7 +217,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - run: uv sync --python 3.13 --locked --all-extras --dev
+      - run: uv sync --python 3.13 --locked --no-dev
       - name: Runtime-only configuration
         run: |
           password="$(openssl rand -hex 24)"
@@ -197,7 +246,7 @@ jobs:
           docker compose exec -T postgres postgres --version \
             | tee artifacts/compose/postgresql-version.txt
       - name: System verification
-        run: uv run python scripts/verify_compose_system.py
+        run: uv run --no-sync python scripts/verify_compose_system.py
       - name: Capture diagnostics
         if: always()
         run: |
@@ -221,6 +270,8 @@ jobs:
     if: always()
     needs:
       - quality-python-313
+      - server-profile
+      - desktop-profile
       - postgresql-integration
       - docker-image
       - compose-system
@@ -229,6 +280,8 @@ jobs:
       - name: Enforce complete gate
         env:
           QUALITY: ${{ needs.quality-python-313.result }}
+          SERVER: ${{ needs.server-profile.result }}
+          DESKTOP: ${{ needs.desktop-profile.result }}
           POSTGRESQL: ${{ needs.postgresql-integration.result }}
           IMAGE: ${{ needs.docker-image.result }}
           COMPOSE: ${{ needs.compose-system.result }}
@@ -237,6 +290,8 @@ jobs:
           jq -n \
             --arg commit "$GITHUB_SHA" \
             --arg quality "$QUALITY" \
+            --arg server "$SERVER" \
+            --arg desktop "$DESKTOP" \
             --arg postgresql "$POSTGRESQL" \
             --arg image "$IMAGE" \
             --arg compose "$COMPOSE" \
@@ -244,6 +299,8 @@ jobs:
               commit:$commit,
               jobs:{
                 quality_python_313:$quality,
+                server_profile:$server,
+                desktop_profile:$desktop,
                 postgresql_integration:$postgresql,
                 docker_image:$image,
                 compose_system:$compose
@@ -278,6 +335,8 @@ jobs:
             echo
             echo "- Commit: \`$GITHUB_SHA\`"
             echo "- Python quality: $QUALITY"
+            echo "- Server-only profile: $SERVER"
+            echo "- Desktop-only profile: $DESKTOP"
             echo "- PostgreSQL integration: $POSTGRESQL"
             echo "- Docker image: $IMAGE"
             echo "- Compose system: $COMPOSE"
@@ -312,6 +371,8 @@ jobs:
             echo "- Artifacts: quality-python-313, postgresql-integration, docker-image, compose-system"
           } | tee artifacts/summary/verification.md >> "$GITHUB_STEP_SUMMARY"
           test "$QUALITY" = success
+          test "$SERVER" = success
+          test "$DESKTOP" = success
           test "$POSTGRESQL" = success
           test "$IMAGE" = success
           test "$COMPOSE" = success

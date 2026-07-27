@@ -5,7 +5,7 @@ COPY --from=uv /uv /usr/local/bin/uv
 WORKDIR /app
 COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
-RUN uv sync --frozen --no-dev --no-editable
+RUN uv sync --frozen --no-dev --no-editable --extra server
 
 FROM python:3.13.5-slim AS runtime
 LABEL org.opencontainers.image.title="Modoroco" org.opencontainers.image.licenses="Apache-2.0"
@@ -14,6 +14,7 @@ WORKDIR /app
 COPY --from=builder --chown=modoroco:modoroco /app/.venv /app/.venv
 COPY --chown=modoroco:modoroco migrations ./migrations
 COPY --chown=modoroco:modoroco alembic.ini ./alembic.ini
+COPY --chown=modoroco:modoroco LICENSE NOTICE ./
 ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 USER modoroco
 EXPOSE 8000

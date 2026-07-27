@@ -8,4 +8,6 @@ jobs:
       - uses: actions/checkout@v4
       - run: grep -q "${GITHUB_REF_NAME#v}" CHANGELOG.md
       - env: {GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}"}
-        run: gh release create "$GITHUB_REF_NAME" --generate-notes --verify-tag --notes "Image: ghcr.io/${GITHUB_REPOSITORY}:$GITHUB_REF_NAME. Review migration and compatibility notes in the changelog."
+        run: |
+          gh release create "$GITHUB_REF_NAME" --generate-notes --verify-tag \
+            --notes "Image: ghcr.io/${GITHUB_REPOSITORY}:$GITHUB_REF_NAME. Review migration and compatibility notes in the changelog."

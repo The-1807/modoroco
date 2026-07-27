@@ -28,7 +28,8 @@ The current vertical slice is a complete PySide6 application with:
 Production and CI target Python 3.13 with `uv` and the committed lockfile.
 
 ```powershell
-uv sync --locked --all-extras --dev
+# Full contributor environment
+uv sync --locked --all-extras --all-groups
 Copy-Item .env.example .env
 # Set unique POSTGRES_PASSWORD and MODOROCO_BOOTSTRAP_API_KEY values.
 docker compose up --build
@@ -37,6 +38,24 @@ docker compose up --build
 The API is available at `http://localhost:8000`; authenticate protected routes with `X-API-Key`.
 Run the desktop independently with `uv run modoroco`, migrations with `uv run alembic upgrade head`,
 or the processes with `uv run modoroco-api` and `uv run modoroco-worker`.
+
+Runtime-specific environments are also supported:
+
+```powershell
+# API and worker development
+uv sync --locked --extra server --group dev
+
+# Native desktop development
+uv sync --locked --extra desktop --group dev
+
+# Production-style server environment without test or desktop packages
+uv sync --locked --no-dev --extra server
+```
+
+The production image installs only the `server` extra. PySide6, Qt libraries, and development
+tools remain available to desktop contributors but are not present in API or worker containers.
+Hosted measurement reduced the image from 853 MB to 184 MB (78.48%); exact evidence is recorded
+in [docs/architecture/dependency-model.md](docs/architecture/dependency-model.md).
 
 ## Quality checks
 
