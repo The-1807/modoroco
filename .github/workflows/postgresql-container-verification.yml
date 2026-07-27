@@ -169,6 +169,13 @@ jobs:
           tags: modoroco:gha-verification-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Scan production image
+        uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # v7.4.0
+        with:
+          image: modoroco:gha-verification-${{ github.sha }}
+          fail-build: false
+          severity-cutoff: high
+          output-format: table
       - name: Inspect image
         run: |
           mkdir -p artifacts/image
