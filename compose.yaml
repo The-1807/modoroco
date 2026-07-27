@@ -29,7 +29,7 @@ services:
     restart: unless-stopped
     read_only: true
     tmpfs: ["/tmp"]
-    networks: [backend]
+    networks: [backend, edge]
   worker:
     build: .
     command: ["modoroco-worker"]
@@ -50,4 +50,5 @@ volumes:
 networks:
   backend:
     internal: true
+  edge:
 
