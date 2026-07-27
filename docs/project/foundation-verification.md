@@ -70,3 +70,71 @@ Project <https://github.com/orgs/The-1807/projects/5> remains open with all 15 i
 milestones. Every item has Status, Priority, Area, Effort, Release, and Owner populated. Status
 counts are Backlog 2, Blocked 2, Done 5, In Progress 1, and Review 5. The reserved `Type` field and
 custom-view API limitations recorded above are unchanged.
+
+## Hosted PostgreSQL and container verification — 2026-07-27
+
+The local Docker prerequisite above remains an accurate record of the workstation limitation, but
+it no longer blocks foundation verification.
+
+### Execution identity
+
+- Workflow: `.github/workflows/postgresql-container-verification.yml`
+- Workflow run: <https://github.com/The-1807/modoroco/actions/runs/30303320850>
+- Run ID: `30303320850`
+- Tested commit: `e126a81748dfc843b6847fc87916d64318aa17e1`
+- Runner: Ubuntu 24.04, Linux `6.17.0-1020-azure`
+- Quality Python: CPython 3.13.14
+- Runtime-image Python: CPython 3.13.5
+- PostgreSQL: 18.4
+- Docker Engine client/server: 28.0.4, API 1.48
+- Docker Compose: 2.38.2
+- Image: `modoroco:gha-verification-e126a81748dfc843b6847fc87916d64318aa17e1`
+- Image ID and size: `sha256:ca2d6b33fbe4180ff218a3adc95dab9bf5d4b12b8603c65634637eb97b62e43c`,
+  853 MB
+- Runtime user: `modoroco` (verified non-root)
+
+### Results
+
+- Quality: passed; locked sync, Ruff format/lint, strict Pyright with zero errors, 14 tests passed
+  and one explicitly PostgreSQL-gated test skipped in the local suite.
+- PostgreSQL integration: passed; empty-database upgrade, repeat upgrade, current head, schema,
+  indexes, constraints, foreign keys, and one focused PostgreSQL concurrency test.
+- Docker image: passed; build, inspection, history, non-root execution, Python and package import
+  smoke tests, health-check metadata, and secret-pattern inspection.
+- Compose: passed with PostgreSQL, one successful migration container, API, and two healthy worker
+  instances on isolated backend and API-edge networks.
+- API liveness, readiness, metrics, worker readiness, automatic transition, phase history,
+  transactional outbox delivery/retry, idempotent replay/conflict, stale-version rejection,
+  tenant isolation, concurrent worker claims, API restart, worker restart, database outage
+  recovery, full-stack restart, named-volume persistence, container authentication, SSE, and
+  deterministic OpenAPI checks: passed.
+- The full-stack restart retained the named PostgreSQL volume until persistence evidence was
+  collected; cleanup removed it only afterward.
+
+Artifacts retained for 14 days are `quality-python-313`, `postgresql-integration`, `docker-image`,
+`compose-system`, and `verification-summary`. They contain command/test output, migration and
+schema evidence, image inspection/history, Docker/Compose/PostgreSQL versions, Compose service and
+network/volume state, logs, structured system-stage results, cleanup evidence, and the final
+machine-readable gate.
+
+### Findings, warnings, and earlier failed runs
+
+The hosted execution found and verified fixes for transactional Alembic execution, PostgreSQL FK
+insert ordering, PostgreSQL 18's volume layout, relocatable container entry points, runtime
+migration packaging, bootstrap ordering, and isolated API ingress. No credential or raw API-key
+leak was found.
+
+Earlier runs were preserved rather than hidden:
+
+- `30299865733`: secret scan matched documented placeholders and its own rule.
+- `30299978699`: PostgreSQL transactional DDL rolled back.
+- `30300325605` and `30300540251`: real foreign keys exposed fixture and session/event ordering.
+- `30300778902`: PostgreSQL 18 rejected the legacy data-volume mount.
+- `30301240332` and `30301498048`: relocated virtualenv entry points and flattened migrations
+  made the migration container fail.
+- `30301904855`: bootstrap client insertion preceded its tenant.
+- `30302257143`: the API was attached only to an internal network, preventing host ingress.
+
+GitHub emitted Node.js 20 deprecation warnings for current action major versions and forced those
+actions to Node.js 24; the actions completed successfully. No GitHub infrastructure error remains.
+Docker Desktop's local Linux-engine HTTP 500/startup limitation remains workstation-specific.
