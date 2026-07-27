@@ -47,6 +47,7 @@ async def test_postgresql_schema_and_concurrent_worker_claims() -> None:
     session_ids = []
     async with sessions() as db:
         db.add(TenantModel(id=tenant_id, name="PostgreSQL test", created_at=now))
+        await db.flush()
         db.add(
             FamilyModel(
                 id=family_id,
@@ -56,6 +57,7 @@ async def test_postgresql_schema_and_concurrent_worker_claims() -> None:
                 created_at=now,
             )
         )
+        await db.flush()
         db.add(
             FamilyVersionModel(
                 id=version_id,
@@ -66,6 +68,7 @@ async def test_postgresql_schema_and_concurrent_worker_claims() -> None:
                 published_at=now,
             )
         )
+        await db.flush()
         for _ in range(6):
             aggregate = Session.create(tenant_id, version_id, (phase,), now)
             session_ids.append(aggregate.session_id)
