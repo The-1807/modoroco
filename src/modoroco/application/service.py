@@ -97,6 +97,7 @@ async def persist_new(session: AsyncSession, aggregate: Session) -> None:
             created_at=aggregate.created_at,
         )
     )
+    await session.flush()
     await _persist_events(session, aggregate, 0)
 
 
