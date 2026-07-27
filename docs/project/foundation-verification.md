@@ -138,3 +138,73 @@ Earlier runs were preserved rather than hidden:
 GitHub emitted Node.js 20 deprecation warnings for current action major versions and forced those
 actions to Node.js 24; the actions completed successfully. No GitHub infrastructure error remains.
 Docker Desktop's local Linux-engine HTTP 500/startup limitation remains workstation-specific.
+
+## Runtime dependency separation and image optimization — 2026-07-27
+
+### Execution identity
+
+- Branch: `perf/runtime-dependency-separation`
+- Starting commit: `c6db4faa6ea64accb7047b053fd556683c043e0d`
+- Verified implementation commit: `ea5dcd74fb49f7b45b6a62166302f2ee1204c873`
+- Draft pull request: <https://github.com/The-1807/modoroco/pull/22>
+- Focused hosted run: <https://github.com/The-1807/modoroco/actions/runs/30307546243>
+- Standard CI run: <https://github.com/The-1807/modoroco/actions/runs/30307548742>
+- Project issue: <https://github.com/The-1807/modoroco/issues/23>
+- Runtime Python: CPython 3.13.5
+- Runtime user: `modoroco` (UID 1807, non-root)
+
+### Dependency and image evidence
+
+The mandatory project dependency set previously combined server and PySide6 desktop runtimes.
+The base project is now a standard-library core; `server` and `desktop` are independent optional
+extras, and contributor/test tools are in the PEP 735 `dev` group. `uv.lock` retained all resolved
+package versions and changed only group metadata.
+
+- Previous image:
+  `sha256:ca2d6b33fbe4180ff218a3adc95dab9bf5d4b12b8603c65634637eb97b62e43c`,
+  853 MB.
+- Optimized image:
+  `sha256:e0976a9a2bf4dff8ca8ca95d48bfc296217b58a086aa426f5e72959ccf4ac2fe`,
+  184 MB (`183,571,712` bytes).
+- Reduction: 669 MB, 78.48%.
+- Largest remaining layers: Debian base 74.8 MB, server virtualenv 62.8 MB, Python runtime
+  36.7 MB, and base operating-system packages 9.23 MB.
+- Runtime inventory: 31 distributions; no PySide6, shiboken6, Qt, pytest, Hypothesis, Ruff,
+  Pyright, or coverage distribution.
+
+### Verification results
+
+- Locked full, server-only, and desktop synchronizations: passed.
+- Ruff format/lint and strict Pyright: passed with zero diagnostics.
+- Full local tests: 18 passed, one PostgreSQL-gated skip, 80% coverage.
+- Hosted quality, architecture boundaries, server imports, deterministic OpenAPI, desktop Qt
+  offscreen launch, and deterministic desktop timer tests: passed.
+- PostgreSQL 18 migrations, schema checks, and concurrent-worker integration: passed.
+- Production image build/import/package/migration/non-root/secret inspection: passed.
+- Compose API/worker readiness, metrics, automatic transitions, history, outbox delivery/retry,
+  idempotency, stale versions, tenant isolation, two-worker claims, API/worker/full-stack restart,
+  named-volume persistence, authentication, SSE, and deterministic OpenAPI: passed.
+- API and worker continue using the same image; migrations, `LICENSE`, and `NOTICE` remain present.
+
+### Security and workflow findings
+
+The server image removes desktop native libraries and development executables. `.dockerignore`
+excludes local environments, Git metadata, secrets, tests, documentation, assets, and caches.
+The publish workflow retains provenance and SBOM attestations, and the focused image build adds a
+SHA-pinned Anchore Grype vulnerability scan. No secret or raw API key was added.
+
+The standard Security workflow's CodeQL job passes, but its Dependency Review job is externally
+blocked because dependency graph support is disabled or unavailable for this repository. GitHub
+returned “Dependency review is not supported on this repository”; no workflow weakening or false
+success was introduced. GitHub also warns that current action majors target Node.js 20 and forces
+them onto Node.js 24.
+
+Earlier runtime-separation runs are preserved:
+
+- `30307377720`: desktop smoke failed because the Ubuntu runner lacked `libEGL.so.1`; downstream
+  PostgreSQL, image, and Compose jobs were correctly skipped.
+- `30307407771`: standard CI reached its pre-existing Compose configuration defect because `.env`
+  was not prepared.
+- `30307407626`: Dependency Review failed because the repository dependency graph is unavailable.
+- `30307546243`: all focused dependency, PostgreSQL, image, Compose, and summary jobs passed after
+  installing the minimal hosted Qt runtime and preparing standard CI configuration correctly.
