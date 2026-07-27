@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from modoroco.domain import Command, Phase, PhaseType, Session
+from modoroco.domain.session import DomainEvent, SessionState
 from modoroco.infrastructure.database import EventModel, OutboxModel, SessionModel
 
 
@@ -43,9 +44,7 @@ def serialize_session(value: Session) -> dict[str, Any]:
     }
 
 
-def hydrate_session(data: dict[str, Any], events=()) -> Session:
-    from modoroco.domain.session import SessionState
-
+def hydrate_session(data: dict[str, Any], events: tuple[DomainEvent, ...] = ()) -> Session:
     phases = tuple(
         Phase(
             p["key"],
@@ -66,7 +65,7 @@ def hydrate_session(data: dict[str, Any], events=()) -> Session:
         state=SessionState(data["state"]),
         version=data["version"],
         current_phase_index=data["current_phase_index"],
-        created_at=_dt(data["created_at"]),
+        created_at=_required_dt(data["created_at"]),
         started_at=_dt(data["started_at"]),
         expected_end_at=_dt(data["expected_end_at"]),
         paused_at=_dt(data["paused_at"]),
@@ -156,6 +155,10 @@ def _iso(value: datetime | None) -> str | None:
 
 def _dt(value: str | None) -> datetime | None:
     return datetime.fromisoformat(value) if value else None
+
+
+def _required_dt(value: str) -> datetime:
+    return datetime.fromisoformat(value)
 
 
 def now_utc() -> datetime:

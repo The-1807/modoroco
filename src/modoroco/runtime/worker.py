@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import argparse
 import asyncio
 import signal
 from datetime import datetime, timezone
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from modoroco.application.service import execute_command
 from modoroco.domain import Command, DomainError
@@ -18,6 +19,17 @@ from modoroco.infrastructure.database import (
 )
 
 log = structlog.get_logger()
+
+
+async def check_database() -> bool:
+    settings = get_settings()
+    engine = build_engine(settings)
+    try:
+        async with engine.connect() as connection:
+            await connection.execute(text("SELECT 1"))
+        return True
+    finally:
+        await engine.dispose()
 
 
 async def run() -> None:
@@ -72,4 +84,13 @@ async def run() -> None:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Verify worker database readiness and exit.",
+    )
+    args = parser.parse_args()
+    if args.check:
+        raise SystemExit(0 if asyncio.run(check_database()) else 1)
     asyncio.run(run())

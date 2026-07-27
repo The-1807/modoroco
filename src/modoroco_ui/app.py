@@ -36,8 +36,8 @@ class ModorocoWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.settings = QSettings("The 1807", "Modoroco")
-        self.snapshot = TimerSnapshot.minutes(int(self.settings.value("focus_minutes", 25)))
-        self.completed_today = int(self.settings.value("completed_today", 3))
+        self.snapshot = TimerSnapshot.minutes(self._setting_int("focus_minutes", 25))
+        self.completed_today = self._setting_int("completed_today", 3)
         self._build_window()
         self._build_shortcuts()
         self.ticker = QTimer(self)
@@ -53,7 +53,8 @@ class ModorocoWindow(QMainWindow):
         icon_path = ASSET_DIR / "modicon.png"
         if icon_path.exists():
             self.setWindowIcon(QIcon(str(icon_path)))
-        root = QWidget(objectName="root")
+        root = QWidget()
+        root.setObjectName("root")
         shell = QHBoxLayout(root)
         shell.setContentsMargins(0, 0, 0, 0)
         shell.setSpacing(0)
@@ -67,7 +68,8 @@ class ModorocoWindow(QMainWindow):
         self.setCentralWidget(root)
 
     def _sidebar(self) -> QWidget:
-        side = QFrame(objectName="sidebar")
+        side = QFrame()
+        side.setObjectName("sidebar")
         side.setFixedWidth(225)
         layout = QVBoxLayout(side)
         layout.setContentsMargins(22, 24, 22, 24)
@@ -79,7 +81,8 @@ class ModorocoWindow(QMainWindow):
         mark.setStyleSheet(
             f"background:{RED}; color:white; border-radius:11px; font-size:20px; font-weight:800;"
         )
-        brand = QLabel("MODOROCO", objectName="brand")
+        brand = QLabel("MODOROCO")
+        brand.setObjectName("brand")
         logo.addWidget(mark)
         logo.addWidget(brand)
         logo.addStretch()
@@ -89,7 +92,8 @@ class ModorocoWindow(QMainWindow):
         for index, (icon, name) in enumerate(
             (("◉", "Focus"), ("↗", "Insights"), ("◇", "Routines"), ("⚙", "Preferences"))
         ):
-            button = QPushButton(f"{icon}    {name}", objectName="nav")
+            button = QPushButton(f"{icon}    {name}")
+            button.setObjectName("nav")
             button.setCheckable(True)
             button.setChecked(index == 0)
             button.clicked.connect(lambda checked=False, i=index: self._navigate(i))
@@ -113,7 +117,8 @@ class ModorocoWindow(QMainWindow):
         )
         body = QHBoxLayout()
         body.setSpacing(28)
-        timer_card = QFrame(objectName="card")
+        timer_card = QFrame()
+        timer_card.setObjectName("card")
         timer_layout = QVBoxLayout(timer_card)
         timer_layout.setContentsMargins(28, 22, 28, 25)
         modes = QHBoxLayout()
@@ -126,14 +131,17 @@ class ModorocoWindow(QMainWindow):
         timer_layout.addWidget(self.dial, 1, Qt.AlignmentFlag.AlignCenter)
         controls = QHBoxLayout()
         controls.addStretch()
-        self.reset_button = QPushButton("↺", objectName="round")
+        self.reset_button = QPushButton("↺")
+        self.reset_button.setObjectName("round")
         self.reset_button.setFixedSize(46, 46)
         self.reset_button.setToolTip("Reset timer")
         self.reset_button.clicked.connect(self._reset)
-        self.action_button = QPushButton("Begin focus", objectName="primary")
+        self.action_button = QPushButton("Begin focus")
+        self.action_button.setObjectName("primary")
         self.action_button.setMinimumWidth(150)
         self.action_button.clicked.connect(self._toggle)
-        self.skip_button = QPushButton("→", objectName="round")
+        self.skip_button = QPushButton("→")
+        self.skip_button.setObjectName("round")
         self.skip_button.setFixedSize(46, 46)
         self.skip_button.setToolTip("Complete this session")
         self.skip_button.clicked.connect(self._complete)
@@ -156,12 +164,14 @@ class ModorocoWindow(QMainWindow):
         metrics.addWidget(self.today_metric)
         metrics.addWidget(MetricCard("1h 42m", "Focused"))
         right.addLayout(metrics)
-        up_next = QLabel("UP NEXT", objectName="eyebrow")
+        up_next = QLabel("UP NEXT")
+        up_next.setObjectName("eyebrow")
         right.addWidget(up_next)
         right.addWidget(SessionRow("Deep work", "Project Modoroco", "50 min", True))
         right.addWidget(SessionRow("Recovery", "Step away & reset", "10 min"))
         right.addSpacing(4)
-        intent = QFrame(objectName="card")
+        intent = QFrame()
+        intent.setObjectName("card")
         intent_layout = QVBoxLayout(intent)
         intent_layout.setContentsMargins(19, 18, 19, 18)
         intent_layout.addWidget(QLabel("Daily intention"))
@@ -187,7 +197,8 @@ class ModorocoWindow(QMainWindow):
         cards.addWidget(MetricCard("4 days", "Current streak", "#f2a03d"))
         content.addLayout(cards)
         content.addSpacing(22)
-        graph = QFrame(objectName="card")
+        graph = QFrame()
+        graph.setObjectName("card")
         graph_layout = QVBoxLayout(graph)
         graph_layout.setContentsMargins(24, 22, 24, 24)
         graph_layout.addWidget(QLabel("Weekly rhythm"))
@@ -239,7 +250,8 @@ class ModorocoWindow(QMainWindow):
         page, content = self._page(
             "PREFERENCES", "Shape your space.", "Modoroco should work the way your attention does."
         )
-        card = QFrame(objectName="card")
+        card = QFrame()
+        card.setObjectName("card")
         card.setMaximumWidth(720)
         layout = QVBoxLayout(card)
         layout.setContentsMargins(24, 22, 24, 24)
@@ -273,9 +285,15 @@ class ModorocoWindow(QMainWindow):
         outer = QVBoxLayout(page)
         outer.setContentsMargins(44, 35, 44, 38)
         outer.setSpacing(8)
-        outer.addWidget(QLabel(eyebrow, objectName="eyebrow"))
-        outer.addWidget(QLabel(title, objectName="headline"))
-        outer.addWidget(QLabel(subtitle, objectName="subtle"))
+        eyebrow_label = QLabel(eyebrow)
+        eyebrow_label.setObjectName("eyebrow")
+        title_label = QLabel(title)
+        title_label.setObjectName("headline")
+        subtitle_label = QLabel(subtitle)
+        subtitle_label.setObjectName("subtle")
+        outer.addWidget(eyebrow_label)
+        outer.addWidget(title_label)
+        outer.addWidget(subtitle_label)
         outer.addSpacing(20)
         return page, outer
 
@@ -352,6 +370,14 @@ class ModorocoWindow(QMainWindow):
         caption, action = labels[self.snapshot.state]
         self.dial.display(text, caption, progress)
         self.action_button.setText(action)
+
+    def _setting_int(self, key: str, default: int) -> int:
+        value = self.settings.value(key, default)
+        if isinstance(value, bool):
+            return int(value)
+        if isinstance(value, (int, float, str)):
+            return int(value)
+        return default
 
 
 def main() -> int:

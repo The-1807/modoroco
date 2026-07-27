@@ -1,19 +1,22 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID, uuid4
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, Security, status
 from fastapi.responses import PlainTextResponse, StreamingResponse
+from fastapi.security import APIKeyHeader
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.middleware.base import RequestResponseEndpoint
 
 from modoroco.application.service import (
     execute_command,
@@ -31,6 +34,7 @@ from modoroco.infrastructure.database import (
     FamilyModel,
     FamilyVersionModel,
     IdempotencyModel,
+    SessionFactory,
     TenantModel,
     build_engine,
     build_session_factory,
@@ -39,6 +43,11 @@ from modoroco.infrastructure.database import (
 REQUESTS = Counter("modoroco_http_requests_total", "HTTP requests", ["method", "path", "status"])
 LATENCY = Histogram("modoroco_http_request_duration_seconds", "HTTP request latency", ["path"])
 COMMANDS = Counter("modoroco_session_commands_total", "Session commands", ["command", "result"])
+API_KEY_HEADER = APIKeyHeader(
+    name="X-API-Key",
+    scheme_name="ModorocoApiKey",
+    auto_error=False,
+)
 
 
 class PhaseInput(BaseModel):
@@ -76,7 +85,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     sessions = build_session_factory(engine)
 
     @asynccontextmanager
-    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         app.state.engine = engine
         app.state.sessions = sessions
         if config.environment == "test" or config.database_url.startswith("sqlite"):
@@ -89,7 +98,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="Modoroco API", version="0.1.0", openapi_version="3.1.0", lifespan=lifespan)
 
     @app.middleware("http")
-    async def observe(request: Request, call_next):
+    async def observe(request: Request, call_next: RequestResponseEndpoint) -> Response:
         correlation = request.headers.get("X-Correlation-ID", str(uuid4()))[:128]
         with LATENCY.labels(request.url.path).time():
             response = await call_next(request)
@@ -98,11 +107,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return response
 
     async def db_session(request: Request) -> AsyncIterator[AsyncSession]:
-        async with request.app.state.sessions() as db:
+        del request
+        async with sessions() as db:
             yield db
 
     async def principal(
-        x_api_key: Annotated[str | None, Header()] = None,
+        x_api_key: Annotated[str | None, Security(API_KEY_HEADER)] = None,
         db: AsyncSession = Depends(db_session),
     ) -> Principal:
         if not x_api_key or (identity := await authenticate(db, x_api_key)) is None:
@@ -114,7 +124,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return identity
 
     @app.exception_handler(DomainError)
-    async def domain_error(request: Request, exc: DomainError):
+    async def domain_error(request: Request, exc: DomainError) -> Response:
         code = getattr(exc, "code", "invalid_transition")
         payload = {
             "code": code,
@@ -145,9 +155,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/v1/families", status_code=201)
     async def create_family(
         body: FamilyCreate,
+        idempotency_key: Annotated[str, Header(min_length=8, max_length=200)],
         identity: Principal = Depends(principal),
         db: AsyncSession = Depends(db_session),
-    ):
+    ) -> dict[str, object]:
+        operation = "family:create"
+        request_hash = _request_hash(body)
+        if existing := await _idempotency_record(db, identity, operation, idempotency_key):
+            _validate_replay(existing, request_hash)
+            return existing.response
         family = FamilyModel(
             id=uuid4(),
             tenant_id=identity.tenant_id,
@@ -156,13 +172,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             created_at=datetime.now(timezone.utc),
         )
         db.add(family)
+        response = _family(family)
+        db.add(
+            IdempotencyModel(
+                tenant_id=identity.tenant_id,
+                client_id=identity.client_id,
+                operation=operation,
+                key=idempotency_key,
+                request_hash=request_hash,
+                response=response,
+                created_at=datetime.now(timezone.utc),
+            )
+        )
         await db.commit()
-        return _family(family)
+        return response
 
     @app.get("/v1/families")
     async def list_families(
         identity: Principal = Depends(principal), db: AsyncSession = Depends(db_session)
-    ):
+    ) -> list[dict[str, object]]:
         values = (
             await db.scalars(select(FamilyModel).where(FamilyModel.tenant_id == identity.tenant_id))
         ).all()
@@ -173,7 +201,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         family_id: UUID,
         identity: Principal = Depends(principal),
         db: AsyncSession = Depends(db_session),
-    ):
+    ) -> dict[str, object]:
         family = await db.scalar(
             select(FamilyModel).where(
                 FamilyModel.id == family_id, FamilyModel.tenant_id == identity.tenant_id
@@ -191,7 +219,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         body: VersionCreate,
         identity: Principal = Depends(principal),
         db: AsyncSession = Depends(db_session),
-    ):
+    ) -> dict[str, object]:
         family = await db.scalar(
             select(FamilyModel).where(
                 FamilyModel.id == family_id, FamilyModel.tenant_id == identity.tenant_id
@@ -233,7 +261,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         body: SessionCreate,
         identity: Principal = Depends(principal),
         db: AsyncSession = Depends(db_session),
-    ):
+    ) -> dict[str, Any]:
         version = await db.scalar(
             select(FamilyVersionModel).where(
                 FamilyVersionModel.id == body.family_version_id,
@@ -266,7 +294,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         session_id: UUID,
         identity: Principal = Depends(principal),
         db: AsyncSession = Depends(db_session),
-    ):
+    ) -> dict[str, Any]:
         model = await get_session(db, session_id, identity.tenant_id)
         if model is None:
             raise HTTPException(404, detail="Session was not found")
@@ -279,17 +307,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         idempotency_key: Annotated[str, Header(min_length=8, max_length=200)],
         identity: Principal = Depends(principal),
         db: AsyncSession = Depends(db_session),
-    ):
+    ) -> dict[str, Any]:
         operation = f"session:{session_id}:{body.command.value}"
-        existing = await db.scalar(
-            select(IdempotencyModel).where(
-                IdempotencyModel.tenant_id == identity.tenant_id,
-                IdempotencyModel.client_id == identity.client_id,
-                IdempotencyModel.operation == operation,
-                IdempotencyModel.key == idempotency_key,
-            )
-        )
+        request_hash = _request_hash(body)
+        existing = await _idempotency_record(db, identity, operation, idempotency_key)
         if existing:
+            _validate_replay(existing, request_hash)
             return existing.response
         model = await get_session(db, session_id, identity.tenant_id)
         if model is None:
@@ -313,6 +336,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 client_id=identity.client_id,
                 operation=operation,
                 key=idempotency_key,
+                request_hash=request_hash,
                 response=response,
                 created_at=datetime.now(timezone.utc),
             )
@@ -326,7 +350,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         session_id: UUID,
         identity: Principal = Depends(principal),
         db: AsyncSession = Depends(db_session),
-    ):
+    ) -> list[dict[str, object]]:
         if await get_session(db, session_id, identity.tenant_id) is None:
             raise HTTPException(404, detail="Session was not found")
         events = (
@@ -348,11 +372,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         session_id: UUID,
         identity: Principal = Depends(principal),
         db: AsyncSession = Depends(db_session),
-    ):
+    ) -> StreamingResponse:
         if await get_session(db, session_id, identity.tenant_id) is None:
             raise HTTPException(404, detail="Session was not found")
 
-        async def generate():
+        async def generate() -> AsyncIterator[str]:
             last: UUID | None = None
             while True:
                 async with sessions() as stream_db:
@@ -376,19 +400,67 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         return StreamingResponse(generate(), media_type="text/event-stream")
 
+    _ = (
+        observe,
+        domain_error,
+        live,
+        ready,
+        metrics,
+        create_family,
+        list_families,
+        read_family,
+        publish_version,
+        create_session,
+        read_session,
+        command_session,
+        session_events,
+        session_stream,
+    )
     return app
 
 
-def _family(value: FamilyModel) -> dict:
+def _family(value: FamilyModel) -> dict[str, object]:
     return {
-        "id": value.id,
+        "id": str(value.id),
         "name": value.name,
         "description": value.description,
-        "created_at": value.created_at,
+        "created_at": value.created_at.isoformat(),
     }
 
 
-async def _bootstrap(settings: Settings, sessions) -> None:
+def _request_hash(body: BaseModel) -> str:
+    canonical = body.model_dump_json(exclude_none=False)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+async def _idempotency_record(
+    db: AsyncSession,
+    identity: Principal,
+    operation: str,
+    key: str,
+) -> IdempotencyModel | None:
+    return await db.scalar(
+        select(IdempotencyModel).where(
+            IdempotencyModel.tenant_id == identity.tenant_id,
+            IdempotencyModel.client_id == identity.client_id,
+            IdempotencyModel.operation == operation,
+            IdempotencyModel.key == key,
+        )
+    )
+
+
+def _validate_replay(record: IdempotencyModel, request_hash: str) -> None:
+    if record.request_hash != request_hash:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={
+                "code": "idempotency_conflict",
+                "message": "Idempotency key was already used with a different request",
+            },
+        )
+
+
+async def _bootstrap(settings: Settings, sessions: SessionFactory) -> None:
     key = settings.bootstrap_api_key.get_secret_value() if settings.bootstrap_api_key else None
     if not key:
         return

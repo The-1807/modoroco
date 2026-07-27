@@ -157,6 +157,13 @@
       },
       "ValidationError": {
         "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
           "loc": {
             "items": {
               "anyOf": [
@@ -205,6 +212,13 @@
         ],
         "title": "VersionCreate",
         "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "ModorocoApiKey": {
+        "in": "header",
+        "name": "X-API-Key",
+        "type": "apiKey"
       }
     }
   },
@@ -288,44 +302,28 @@
     "/v1/families": {
       "get": {
         "operationId": "list_families_v1_families_get",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "x-api-key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response List Families V1 Families Get",
+                  "type": "array"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "ModorocoApiKey": []
+          }
+        ],
         "summary": "List Families"
       },
       "post": {
@@ -333,18 +331,13 @@
         "parameters": [
           {
             "in": "header",
-            "name": "x-api-key",
-            "required": false,
+            "name": "idempotency-key",
+            "required": true,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
+              "maxLength": 200,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
             }
           }
         ],
@@ -362,7 +355,11 @@
           "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Family V1 Families Post",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -378,6 +375,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "ModorocoApiKey": []
+          }
+        ],
         "summary": "Create Family"
       }
     },
@@ -394,29 +396,17 @@
               "title": "Family Id",
               "type": "string"
             }
-          },
-          {
-            "in": "header",
-            "name": "x-api-key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
           }
         ],
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Read Family V1 Families  Family Id  Get",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -432,6 +422,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "ModorocoApiKey": []
+          }
+        ],
         "summary": "Read Family"
       }
     },
@@ -447,22 +442,6 @@
               "format": "uuid",
               "title": "Family Id",
               "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "x-api-key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
             }
           }
         ],
@@ -480,7 +459,11 @@
           "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Publish Version V1 Families  Family Id  Versions Post",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -496,30 +479,17 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "ModorocoApiKey": []
+          }
+        ],
         "summary": "Publish Version"
       }
     },
     "/v1/sessions": {
       "post": {
         "operationId": "create_session_v1_sessions_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "x-api-key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
-          }
-        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -534,7 +504,11 @@
           "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Session V1 Sessions Post",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -550,6 +524,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "ModorocoApiKey": []
+          }
+        ],
         "summary": "Create Session"
       }
     },
@@ -566,29 +545,17 @@
               "title": "Session Id",
               "type": "string"
             }
-          },
-          {
-            "in": "header",
-            "name": "x-api-key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
           }
         ],
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Read Session V1 Sessions  Session Id  Get",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -604,6 +571,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "ModorocoApiKey": []
+          }
+        ],
         "summary": "Read Session"
       }
     },
@@ -631,22 +603,6 @@
               "title": "Idempotency-Key",
               "type": "string"
             }
-          },
-          {
-            "in": "header",
-            "name": "x-api-key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
           }
         ],
         "requestBody": {
@@ -663,7 +619,11 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Command Session V1 Sessions  Session Id  Commands Post",
+                  "type": "object"
+                }
               }
             },
             "description": "Successful Response"
@@ -679,6 +639,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "ModorocoApiKey": []
+          }
+        ],
         "summary": "Command Session"
       }
     },
@@ -695,29 +660,20 @@
               "title": "Session Id",
               "type": "string"
             }
-          },
-          {
-            "in": "header",
-            "name": "x-api-key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
           }
         ],
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Response Session Events V1 Sessions  Session Id  Events Get",
+                  "type": "array"
+                }
               }
             },
             "description": "Successful Response"
@@ -733,6 +689,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "ModorocoApiKey": []
+          }
+        ],
         "summary": "Session Events"
       }
     },
@@ -749,22 +710,6 @@
               "title": "Session Id",
               "type": "string"
             }
-          },
-          {
-            "in": "header",
-            "name": "x-api-key",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Api-Key"
-            }
           }
         ],
         "responses": {
@@ -787,6 +732,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "ModorocoApiKey": []
+          }
+        ],
         "summary": "Session Stream"
       }
     }

@@ -15,7 +15,13 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.ext.asyncio import AsyncAttrs, AsyncEngine, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncAttrs,
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from .config import Settings
@@ -110,6 +116,7 @@ class IdempotencyModel(Base):
     client_id: Mapped[UUID] = mapped_column(ForeignKey("api_clients.id"))
     operation: Mapped[str] = mapped_column(String(100))
     key: Mapped[str] = mapped_column(String(200))
+    request_hash: Mapped[str] = mapped_column(String(64))
     response: Mapped[dict[str, Any]] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
@@ -118,5 +125,8 @@ def build_engine(settings: Settings) -> AsyncEngine:
     return create_async_engine(settings.database_url, pool_pre_ping=True)
 
 
-def build_session_factory(engine: AsyncEngine) -> async_sessionmaker:
+SessionFactory = async_sessionmaker[AsyncSession]
+
+
+def build_session_factory(engine: AsyncEngine) -> SessionFactory:
     return async_sessionmaker(engine, expire_on_commit=False)

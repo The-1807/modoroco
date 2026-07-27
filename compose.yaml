@@ -37,6 +37,11 @@ services:
     depends_on:
       migrate: {condition: service_completed_successfully}
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "modoroco-worker", "--check"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     read_only: true
     tmpfs: ["/tmp"]
     networks: [backend]

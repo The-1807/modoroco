@@ -21,6 +21,6 @@ definition of done when created through GitHub.
 | PostgreSQL integration and system testing | Database | Critical | First system test | Blocked |
 | First signed container release | Docker | High | First container release | Backlog |
 
-Docker and system-test items are blocked locally by the absent Docker executable. Project creation
-is blocked by the absent Git remote, as recorded in `kanban-plan.md`.
-
+Docker and PostgreSQL system-test items remain blocked locally by the absent Docker executable and
+the absence of a local PostgreSQL service. Labels, ten milestones, issues 6–20, and organization
+Project 5 were created on 2026-07-27 from this manifest.
