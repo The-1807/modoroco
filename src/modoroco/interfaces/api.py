@@ -469,6 +469,7 @@ async def _bootstrap(settings: Settings, sessions: SessionFactory) -> None:
         if await db.get(TenantModel, tenant_id) is None:
             now = datetime.now(timezone.utc)
             db.add(TenantModel(id=tenant_id, name="Development", created_at=now))
+            await db.flush()
             db.add(
                 ApiClientModel(
                     id=client_id,
