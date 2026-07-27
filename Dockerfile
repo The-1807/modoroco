@@ -12,7 +12,8 @@ LABEL org.opencontainers.image.title="Modoroco" org.opencontainers.image.license
 RUN useradd --create-home --uid 1807 modoroco
 WORKDIR /app
 COPY --from=builder --chown=modoroco:modoroco /app/.venv /app/.venv
-COPY --chown=modoroco:modoroco migrations alembic.ini ./
+COPY --chown=modoroco:modoroco migrations ./migrations
+COPY --chown=modoroco:modoroco alembic.ini ./alembic.ini
 ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 USER modoroco
 EXPOSE 8000
