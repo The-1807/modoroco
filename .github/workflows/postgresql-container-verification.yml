@@ -28,7 +28,7 @@ jobs:
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: Locked environment
@@ -74,7 +74,7 @@ jobs:
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - run: uv sync --python 3.13 --locked --no-dev --extra server
@@ -92,7 +92,7 @@ jobs:
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends libegl1
@@ -127,7 +127,7 @@ jobs:
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - run: uv sync --python 3.13 --locked --extra server --group dev
@@ -214,7 +214,7 @@ jobs:
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - run: uv sync --python 3.13 --locked --no-dev
